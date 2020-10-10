@@ -83,10 +83,10 @@ app.post('/api/shorturl/new', (req, res) => {
 
 
 app.get('/api/shorturl/:short_url', (req, res) => {
-  Url.findOne({ short_url: req.params.short_url }).then((err, res) => {
-    if (err) console.log(err)
-    console.log(res.length)
-    //res.redirect(res)
+  Url.findOne({ short_url: req.params.short_url }, (err, data) => {
+    if (err) res.json({ error: 'Invalid url' })
+    console.log(data)
+    res.redirect(data.original_url)
   })
 })
 
