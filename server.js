@@ -1,10 +1,12 @@
 'use strict'
 
 require('dotenv').config()
+const Url = require('./model/url.js')
 const express = require('express')
-const mongo = require('mongodb')
-const mongoose = require('mongoose')
 const bodyParser = require('body-parser')
+const mongoose = require('mongoose')
+const cors = require('cors')
+const app = express()
 const dns = require('dns')
 //const url = require('url')
 const options = {
@@ -12,26 +14,8 @@ const options = {
   hints: dns.ADDRCONFIG | dns.V4MAPPED
 }
 
-const cors = require('cors')
-
-const app = express()
-
 // Basic Configuration 
 const port = process.env.PORT || 3000
-
-/** this project needs a db !! **/
-mongoose.connect(process.env.DB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-const db = mongoose.connection
-db.on('error', console.error.bind(console, 'connection error:'))
-db.once('open', () => {
-  console.log('DB connected!')
-})
-
-//Schema
-const urlSchema = new mongoose.Schema({
-  original_url: String,
-  short_url: Number
-})
 
 app.use(cors())
 
@@ -40,26 +24,72 @@ app.use(cors())
 app.use(bodyParser.urlencoded({ extended: false }))
 
 app.post('/api/shorturl/new', (req, res) => {
-  let url;
+  let input;
   let error = false
   try {
-    url = new URL(req.body.url) //use url.hostname to only look for the hostname part of url
+    input = new URL(req.body.url) //use url.hostname to only look for the hostname part of url
   } catch (err) {
     res.json({ error: 'invalid URL' })
     error = true
   } finally {
     if (!error) {
-      dns.lookup(url.hostname, options, (err, address, family) => {
+      dns.lookup(input.hostname, options, (err, address, family) => {
         if (err) {
           res.json({ error: 'invalid URL' })
         } else {
           console.log('address: %j family: IPv%s', address, family)
-          res.json({ original_url: url })
+
+          //search db first to check if already exist
+          let exist = false
+          Url.exists({ original_url: input }, (err, result) => {
+            if (err) {
+              console.log(err)
+            }
+
+            if (result) {
+              Url.findOne({ original_url: input }).exec((err, data) => {
+                if (err) console.log(err)
+                console.log('Exist')
+                res.json({ original_url: data.original_url, short_url: data.short_url })
+              })
+            } else {
+              Url.create({ original_url: input }, (err, data) => {
+                if (err) console.log(err)
+                console.log('Not exist')
+                res.json({ original_url: data.original_url, short_url: data.short_url })
+              })
+            }
+          })
+
+          /*
+          if (!exist) {
+            Url.create({ original_url: input }, (err, data) => {
+              if (err) console.log(err)
+              console.log('Not exist')
+              res.json({ original_url: data.original_url, short_url: data.short_url })
+            })
+          } else {
+            Url.findOne({ original_url: input }).exec((err, data) => {
+              if (err) console.log(err)
+              console.log('Exist')
+              res.json({ original_url: data.original_url, short_url: data.short_url })
+            })
+          } */
         }
       })
     }
   }
 })
+
+
+app.get('/api/shorturl/:short_url', (req, res) => {
+  Url.findOne({ short_url: req.params.short_url }).then((err, res) => {
+    if (err) console.log(err)
+    console.log(res.length)
+    //res.redirect(res)
+  })
+})
+
 
 app.use('/public', express.static(process.cwd() + '/public'))
 
